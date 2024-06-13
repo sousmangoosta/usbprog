@@ -13,7 +13,8 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
+#include <Arduino.h>
 #include <SPI.h>
 
 #define S_ACK 0x06
@@ -42,9 +43,9 @@
 #define S_CMD_S_BUSTYPE    0x12UL /* Set used bustype(s).                         */
 #define S_CMD_O_SPIOP      0x13UL /* Perform SPI operation.                       */
 
-#define S_IFACE_VERSION    0x01    /* Version of the protocol */
-#define S_PGM_NAME    "usbprog" /* The program's name */
-#define S_SPEED      57600    /* Serial speed */
+#define S_IFACE_VERSION    0x01   /* Version of the protocol */
+#define S_PGM_NAME         "usbprog" /* The program's name */
+#define S_SPEED            115200    /* Serial speed */
 
 /* 
  * we must split in 3 parts because else avr-gcc doesn't seem to
@@ -65,48 +66,43 @@
 #define select_chip()      digitalWrite(CS, LOW);
 #define unselect_chip()    digitalWrite(CS, HIGH);
 
+#define serial Serial
 
-void setup_spi(void)
-{
-  SPI.begin(52);
-  SPI.setClockDivider(52, 4);
+void setup_spi() {
+  SPI.begin(BOARD_SPI_SS2);
   pinMode(CS, OUTPUT);
   digitalWrite(CS, HIGH);
 }
 
-inline char readwrite_spi(char c)
-{
-  return SPI.transfer(c);
+inline char readwrite_spi(char c) {
+  return SPI.transfer(BOARD_SPI_SS2, c);
 }
 
-#define putchar_uart(x)  SerialUSB.write(x)
+#define putchar_uart(x)  serial.write(x)
 
-char getchar_uart(void)
-{
-  while(!SerialUSB.available());
-  return SerialUSB.read();
+char getchar_uart() {
+  while (!serial.available());
+  return serial.read();
 }
 
-#define word_uart(x)  SerialUSB.print(x)
+#define word_uart(x)  serial.print(x)
 
 /* get 24bit values in little endian */
-uint32_t get24_le()
-{
-  uint32_t val = 0;
-  
-  val = (uint32_t)getchar_uart() << 0;
-  val |= (uint32_t)getchar_uart() << 8;
-  val |= (uint32_t)getchar_uart() << 16;
+uint32_t get24_le() {
+  uint32_t val;
+
+  val = (uint32_t) getchar_uart() << 0;
+  val |= (uint32_t) getchar_uart() << 8;
+  val |= (uint32_t) getchar_uart() << 16;
   return val;
 }
 
-void handle_command(unsigned char command)
-{
+void handle_command(unsigned char command) {
   int i;
   char c;
-  uint32_t slen = 0; /* write len */
-  uint32_t rlen = 0; /* read len */
-  switch (command){
+  uint32_t slen; /* write len */
+  uint32_t rlen; /* read len */
+  switch (command) {
     case S_CMD_NOP:
       putchar_uart(S_ACK);
       break;
@@ -114,23 +110,23 @@ void handle_command(unsigned char command)
       putchar_uart(S_ACK);
       putchar_uart(S_IFACE_VERSION);
       /* little endian multibyte value to complete to 16bit */
-      putchar_uart((uint8_t)0);
+      putchar_uart((uint8_t) 0);
       break;
     case S_CMD_Q_CMDMAP:
       putchar_uart(S_ACK);
       /* little endian */
       putchar_uart(SUPPORTED_COMMANDS_LOW);
-      putchar_uart((uint8_t)0x00);
+      putchar_uart((uint8_t) 0x00);
       putchar_uart(SUPPORTED_COMMANDS_HIGH);
-      for (i=0;i<29;i++){
-        putchar_uart((uint8_t)0x0);
+      for (i = 0; i < 29; i++) {
+        putchar_uart((uint8_t) 0x0);
       }
       break;
     case S_CMD_Q_PGMNAME:
       putchar_uart(S_ACK);
       word_uart(S_PGM_NAME);
-      for (i=strlen(S_PGM_NAME);i<16;i++){
-        putchar_uart((uint8_t)0);
+      for (i = strlen(S_PGM_NAME); i < 16; i++) {
+        putchar_uart((uint8_t) 0);
       }
       break;
     case S_CMD_Q_SERBUF:
@@ -184,18 +180,18 @@ void handle_command(unsigned char command)
       /* get rlen */
       rlen = get24_le();
 
-      select_chip();
+      select_chip()
       /* SPI is configured in little endian */
-      while (slen--){
+      while (slen--) {
         c = getchar_uart();
         readwrite_spi(c);
       }
       putchar_uart(S_ACK);
       /* receive TODO: handle errors */
-      while (rlen--){
-        putchar_uart(readwrite_spi(0x0));
+      while (rlen--) {
+        putchar_uart(readwrite_spi(0xFF));
       }
-      unselect_chip();
+      unselect_chip()
       break;
     default:
       break;
@@ -203,17 +199,15 @@ void handle_command(unsigned char command)
 }
 
 
-void setup(void)
-{
-  SerialUSB.begin(9600);
-  while(!SerialUSB);
+void setup(void) {
+  serial.begin(S_SPEED);
+  while (!serial);
   setup_spi();
 }
 
-void loop(void)
-{
-  uint8_t data=SerialUSB.read();
-  if(data>0){
+void loop(void) {
+  uint8_t data = serial.read();
+  if (data > 0) {
     handle_command(data);
   }
 }
